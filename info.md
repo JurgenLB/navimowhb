@@ -13,8 +13,8 @@ Homebridge plugin for viewing and controlling Segway Navimow mowers from HomeKit
 
 ## Runtime requirements
 
-- Homebridge 1.8+
-- Node.js 18, 20, 22, or 24
+- Homebridge 1.8 or 2.1.0
+- Node.js 18 or 24
 
 ## Setup summary
 
