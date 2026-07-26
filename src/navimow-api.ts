@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { Logger } from 'homebridge';
 import type { NavimowCommand, NavimowDevice, NavimowState } from './settings';
 
 const CLIENT_ID = 'homeassistant';
@@ -213,14 +214,21 @@ export class NavimowTokenStore {
 }
 
 export class NavimowApiClient {
-  constructor(private readonly tokenStore: NavimowTokenStore) {}
+  constructor(
+    private readonly tokenStore: NavimowTokenStore,
+    private readonly log?: Logger,
+  ) {}
 
   async getDevices(): Promise<NavimowDevice[]> {
     const response = await this.request<DeviceListResponse>('GET', '/openapi/smarthome/authList');
-    const devices = response.data?.payload?.devices ?? [];
-    return devices
+    const raw = response.data?.payload?.devices ?? [];
+    this.log?.debug(`[Navimow API] getDevices raw payload: ${JSON.stringify(response.data?.payload)}`);
+
+    const devices = raw
       .filter((device): device is Record<string, unknown> => typeof device === 'object' && device !== null)
-      .map((device) => normalizeDevice(device));
+      .map((device) => normalizeDevice(device, this.log));
+    this.log?.debug(`[Navimow API] getDevices normalized (${devices.length}): ${JSON.stringify(devices)}`);
+    return devices;
   }
 
   async getDeviceStates(deviceIds: string[], source: string): Promise<Map<string, NavimowState>> {
@@ -232,12 +240,14 @@ export class NavimowApiClient {
       devices: deviceIds.map((deviceId) => ({ id: deviceId })),
     });
 
+    this.log?.debug(`[Navimow API] getDeviceStates raw payload: ${JSON.stringify(response.data?.payload)}`);
     const result = new Map<string, NavimowState>();
     for (const status of response.data?.payload?.devices ?? []) {
       if (!status || typeof status !== 'object') {
         continue;
       }
-      const normalized = normalizeState(status as Record<string, unknown>, source);
+      const normalized = normalizeState(status as Record<string, unknown>, source, this.log);
+      this.log?.debug(`[Navimow API] getDeviceStates normalized for ${normalized.deviceId}: ${JSON.stringify(normalized)}`);
       result.set(normalized.deviceId, normalized);
     }
     return result;
@@ -246,6 +256,7 @@ export class NavimowApiClient {
   async getMqttConnectionInfo(): Promise<NavimowMqttConnectionInfo | null> {
     const response = await this.request<Record<string, unknown>>('GET', '/openapi/mqtt/userInfo/get/v2');
     const info = response.data ?? {};
+    this.log?.debug(`[Navimow API] getMqttConnectionInfo raw response keys: ${Object.keys(info).join(', ')}`);
     const accessToken = await this.tokenStore.getAccessToken();
     const username = stringFromPaths(info, [
       ['userName'],
@@ -276,6 +287,7 @@ export class NavimowApiClient {
     if (mqttUrl) {
       const websocketUrl = buildWebsocketBrokerUrl(mqttUrl, mqttHost, mqttPort);
       if (websocketUrl) {
+        this.log?.debug(`[Navimow API] getMqttConnectionInfo: resolved WebSocket broker URL`);
         return {
           brokerUrl: websocketUrl,
           password,
@@ -288,10 +300,12 @@ export class NavimowApiClient {
     }
 
     if (!mqttHost) {
+      this.log?.debug('[Navimow API] getMqttConnectionInfo: no MQTT host found; realtime telemetry unavailable');
       return null;
     }
 
     const protocol = (mqttPort ?? 1883) === 8883 ? 'mqtts' : 'mqtt';
+    this.log?.debug(`[Navimow API] getMqttConnectionInfo: resolved TCP broker ${protocol}://${stripProtocol(mqttHost)}:${mqttPort ?? 1883}`);
     return {
       brokerUrl: `${protocol}://${stripProtocol(mqttHost)}:${mqttPort ?? 1883}`,
       password,
@@ -301,6 +315,7 @@ export class NavimowApiClient {
 
   async sendCommand(deviceId: string, command: NavimowCommand): Promise<CommandResponse> {
     const execution = mapCommand(command);
+    this.log?.debug(`[Navimow API] sendCommand ${command} to device ${deviceId}: ${JSON.stringify(execution)}`);
     const response = await this.request<CommandResponse>('POST', '/openapi/smarthome/sendCommands', {
       commands: [
         {
@@ -311,6 +326,7 @@ export class NavimowApiClient {
     });
 
     const results = response.data?.payload?.commands ?? [];
+    this.log?.debug(`[Navimow API] sendCommand response: ${JSON.stringify(response.data?.payload)}`);
     for (const result of results) {
       if (result.status !== 'ERROR') {
         continue;
@@ -335,12 +351,15 @@ export class NavimowApiClient {
       devices,
     });
 
-    return (response.data?.payload?.devices ?? [])
+    const results = (response.data?.payload?.devices ?? [])
       .filter((device): device is Record<string, unknown> => typeof device === 'object' && device !== null);
+    this.log?.debug(`[Navimow API] queryCommandResults: ${JSON.stringify(results)}`);
+    return results;
   }
 
   private async request<T>(method: 'GET' | 'POST', endpoint: string, body?: Record<string, unknown>): Promise<NavimowApiResponse<T>> {
     const accessToken = await this.tokenStore.getAccessToken();
+    this.log?.debug(`[Navimow API] ${method} ${endpoint}${body ? ` body=${JSON.stringify(body)}` : ''}`);
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       body: body ? JSON.stringify(body) : undefined,
       headers: {
@@ -357,6 +376,7 @@ export class NavimowApiClient {
     }
 
     const payload = await response.json() as NavimowApiResponse<T>;
+    this.log?.debug(`[Navimow API] ${method} ${endpoint} -> code=${payload.code} desc=${payload.desc ?? ''}`);
     if (payload.code !== 1) {
       throw new NavimowApiError(`Navimow API request failed: ${payload.desc ?? 'Unknown error'}`);
     }
@@ -424,7 +444,16 @@ function mapCommand(command: NavimowCommand): { command: string; params?: Record
   }
 }
 
-function normalizeDevice(device: Record<string, unknown>): NavimowDevice {
+function normalizeDevice(device: Record<string, unknown>, log?: Logger): NavimowDevice {
+  const id = stringValue(device.id) ?? '';
+  const name = stringValue(device.name) ?? '';
+
+  if (!id) {
+    log?.warn('[Navimow API] Device is missing an id field; it will be skipped or show as empty.');
+  }
+  if (!name) {
+    log?.warn(`[Navimow API] Device ${id || '(unknown)'} is missing a name field.`);
+  }
   return {
     firmwareVersion: stringFromPaths(device, [
       ['firmwareVersion'],
@@ -437,7 +466,7 @@ function normalizeDevice(device: Record<string, unknown>): NavimowDevice {
       ['softwareVersion'],
       ['swVersion'],
     ]) ?? '',
-    id: stringValue(device.id) ?? '',
+    id,
     macAddress: stringFromPaths(device, [
       ['macAddress'],
       ['mac_address'],
@@ -454,7 +483,7 @@ function normalizeDevice(device: Record<string, unknown>): NavimowDevice {
       ['productInfo', 'model'],
       ['vehicle', 'model'],
     ]) ?? '',
-    name: stringValue(device.name) ?? '',
+    name,
     online: booleanValue(device.online),
     serialNumber: stringFromPaths(device, [
       ['serialNumber'],
@@ -465,11 +494,11 @@ function normalizeDevice(device: Record<string, unknown>): NavimowDevice {
       ['productInfo', 'serialNumber'],
       ['productInfo', 'serial_number'],
       ['vehicle', 'serialNumber'],
-    ]) ?? stringValue(device.id) ?? '',
+    ]) ?? id,
   };
 }
 
-export function normalizeState(status: Record<string, unknown>, source: string): NavimowState {
+export function normalizeState(status: Record<string, unknown>, source: string, log?: Logger): NavimowState {
   const rawState = stringFromPaths(status, [
     ['state'],
     ['status'],
@@ -481,6 +510,12 @@ export function normalizeState(status: Record<string, unknown>, source: string):
     ['attributes', 'status'],
   ]);
   const normalizedState = rawState ? (RAW_STATE_TO_CANONICAL[rawState] ?? rawState) : 'unknown';
+  if (rawState && !(rawState in RAW_STATE_TO_CANONICAL)) {
+    log?.warn(`[Navimow API] Unrecognized mower state received: "${rawState}" (source: ${source}). Please report this on the plugin GitHub issue tracker.`);
+  }
+  if (!rawState) {
+    log?.debug(`[Navimow API] No state field found in status payload (source: ${source}); treating as unknown.`);
+  }
   const errorCode = stringFromPaths(status, [
     ['error_code'],
     ['errorCode'],
@@ -541,7 +576,7 @@ export function normalizeState(status: Record<string, unknown>, source: string):
 
   return {
     attributes: attributePayload,
-    battery: extractBatteryValue(status),
+    battery: extractBatteryValue(status, source, log),
     deviceId: stringFromPaths(status, [
       ['device_id'],
       ['deviceId'],
@@ -590,7 +625,11 @@ export function normalizeState(status: Record<string, unknown>, source: string):
   };
 }
 
-function extractBatteryValue(data: Record<string, unknown>): number | null {
+function extractBatteryValue(
+  data: Record<string, unknown>,
+  source: string,
+  log?: Logger,
+    ): number | null {
   const direct = numberFromPaths(data, [
     ['battery'],
     ['batteryLevel'],
@@ -606,7 +645,9 @@ function extractBatteryValue(data: Record<string, unknown>): number | null {
     ['attributes', 'batteryInfo', 'capacityRemaining'],
   ]);
   if (direct !== null) {
-    return normalizeBatteryValue(direct);
+    const normalized = normalizeBatteryValue(direct, 'direct', source, log);
+    log?.debug(`[Navimow API] Battery parsed from direct fields (${source}): raw=${direct} normalized=${normalized}`);
+    return normalized;
   }
 
   const capacityRemaining = valueAtPath(data, ['capacityRemaining']);
@@ -635,18 +676,33 @@ function extractBatteryValue(data: Record<string, unknown>): number | null {
     if (typeof descriptive === 'string') {
       const match = descriptive.match(/\d+/);
       if (match) {
-        return normalizeBatteryValue(Number(match[0]));
+        const rawDescriptive = Number(match[0]);
+        const normalized = normalizeBatteryValue(rawDescriptive, 'descriptiveCapacityRemaining', source, log);
+        log?.debug(`[Navimow API] Battery parsed from descriptive field (${source}): raw=${rawDescriptive} normalized=${normalized}`);
+        return normalized;
       }
+      log?.warn(`[Navimow API] Battery descriptive field is not parseable (${source}): ${descriptive}`);
     }
   }
+  log?.debug(`[Navimow API] Battery value missing in payload (${source})`);
   return null;
 }
 
-function normalizeBatteryValue(value: number): number | null {
+function normalizeBatteryValue(
+  value: number,
+  inputType: 'direct' | 'descriptiveCapacityRemaining',
+  source: string,
+  log?: Logger,
+): number | null {
   if (!Number.isFinite(value)) {
+    log?.warn(`[Navimow API] Invalid battery value (${source}, ${inputType}): ${String(value)}`);
     return null;
   }
-  return Math.max(0, Math.min(100, Math.round(value)));
+  const rounded = Math.round(value);
+  if (rounded < 0 || rounded > 100) {
+    log?.warn(`[Navimow API] Out-of-range battery value (${source}, ${inputType}): ${value}; clamping to 0-100`);
+  }
+  return Math.max(0, Math.min(100, rounded));
 }
 
 function stringValue(value: unknown): string | null {
