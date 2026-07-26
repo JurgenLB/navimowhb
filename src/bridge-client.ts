@@ -52,7 +52,7 @@ export class NavimowBridgeClient extends EventEmitter {
       throw new AuthRequiredError();
     }
 
-    this.apiClient = new NavimowApiClient(tokenStore);
+    this.apiClient = new NavimowApiClient(tokenStore, this.log);
     await this.refreshAll('http_bootstrap');
   await this.startRealtimeUpdates();
 
@@ -288,7 +288,7 @@ export class NavimowBridgeClient extends EventEmitter {
 
     if (parsedTopic.channel === 'state' || parsedTopic.channel === 'attributes') {
       const source = parsedTopic.channel === 'state' ? 'mqtt_push' : 'mqtt_attributes';
-      this.storeState(parsedTopic.deviceId, normalizeState(data, source));
+      this.storeState(parsedTopic.deviceId, normalizeState(data, source, this.log));
     }
   }
 
