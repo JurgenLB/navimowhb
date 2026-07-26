@@ -625,7 +625,20 @@ function extractBatteryValue(data: Record<string, unknown>): number | null {
       return normalizeBatteryValue(battery);
     }
   }
-
+  else {
+    const descriptive = stringFromPaths(data, [
+      ['descriptiveCapacityRemaining'],
+      ['batteryInfo', 'descriptiveCapacityRemaining'],
+      ['attributes', 'descriptiveCapacityRemaining'],
+      ['attributes', 'batteryInfo', 'descriptiveCapacityRemaining'],
+    ]);
+    if (typeof descriptive === 'string') {
+      const match = descriptive.match(/\d+/);
+      if (match) {
+        return normalizeBatteryValue(Number(match[0]));
+      }
+    }
+  }
   return null;
 }
 
