@@ -663,7 +663,7 @@ function extractBatteryValue(
     const rawValue = percentageEntry?.rawValue;
     const battery = numberValue(rawValue);
     if (battery !== null) {
-      return normalizeBatteryValue(battery);
+      return normalizeBatteryValue(battery, 'direct', source, log);
     }
   }
   else {
