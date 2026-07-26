@@ -286,6 +286,10 @@ export class NavimowBridgeClient extends EventEmitter {
 
     data.device_id ??= parsedTopic.deviceId;
 
+    this.log.debug(
+      `Navimow realtime ${parsedTopic.channel} for device ${parsedTopic.deviceId}: ${JSON.stringify(data)}`,
+    );
+
     if (parsedTopic.channel === 'state' || parsedTopic.channel === 'attributes') {
       const source = parsedTopic.channel === 'state' ? 'mqtt_push' : 'mqtt_attributes';
       this.storeState(parsedTopic.deviceId, normalizeState(data, source, this.log));
