@@ -48,8 +48,9 @@ export class NavimowPlatform implements DynamicPlatformPlugin {
     this.bridge.on('status', ({ message }) => this.log.info(message));
     this.bridge.on('devices', ({ devices }) => this.syncDevices(devices));
     this.bridge.on('state', ({ state }) => {
-      const accessory = this.accessories.get(state.deviceId);
-      accessory?.updateState(state);
+      for (const role of NAVIMOW_ACCESSORY_ROLES) {
+        this.accessories.get(buildAccessoryKey(state.deviceId, role))?.updateState(state);
+      }
     });
 
     this.api.on(APIEvent.DID_FINISH_LAUNCHING, async () => {
@@ -82,7 +83,9 @@ export class NavimowPlatform implements DynamicPlatformPlugin {
         if (!state) {
           continue;
         }
-        this.accessories.get(device.id)?.updateState(state);
+        for (const role of NAVIMOW_ACCESSORY_ROLES) {
+          this.accessories.get(buildAccessoryKey(device.id, role))?.updateState(state);
+        }
       }
     } catch (error) {
       this.log.error(`Failed to start Navimow platform: ${String(error)}`);
