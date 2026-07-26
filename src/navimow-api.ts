@@ -580,7 +580,7 @@ export function normalizeState(status: Record<string, unknown>, source: string, 
 
   return {
     attributes: attributePayload,
-    battery: extractBatteryValue(status),
+    battery: extractBatteryValue(status, source, log),
     deviceId: stringFromPaths(status, [
       ['device_id'],
       ['deviceId'],
@@ -629,7 +629,11 @@ export function normalizeState(status: Record<string, unknown>, source: string, 
   };
 }
 
-function extractBatteryValue(data: Record<string, unknown>): number | null {
+function extractBatteryValue(
+  data: Record<string, unknown>,
+  source: string,
+  log?: Logger,
+): number | null {
   const direct = numberFromPaths(data, [
     ['battery'],
     ['batteryLevel'],
@@ -645,7 +649,9 @@ function extractBatteryValue(data: Record<string, unknown>): number | null {
     ['attributes', 'batteryInfo', 'capacityRemaining'],
   ]);
   if (direct !== null) {
-    return normalizeBatteryValue(direct);
+    const normalized = normalizeBatteryValue(direct, 'direct', source, log);
+    log?.debug(`[Navimow API] Battery parsed from direct fields (${source}): raw=${direct} normalized=${normalized}`);
+    return normalized;
   }
 
   const descriptive = stringFromPaths(data, [
@@ -657,18 +663,34 @@ function extractBatteryValue(data: Record<string, unknown>): number | null {
   if (typeof descriptive === 'string') {
     const match = descriptive.match(/\d+/);
     if (match) {
-      return normalizeBatteryValue(Number(match[0]));
+      const rawDescriptive = Number(match[0]);
+      const normalized = normalizeBatteryValue(rawDescriptive, 'descriptiveCapacityRemaining', source, log);
+      log?.debug(`[Navimow API] Battery parsed from descriptive field (${source}): raw=${rawDescriptive} normalized=${normalized}`);
+      return normalized;
     }
+    log?.warn(`[Navimow API] Battery descriptive field is not parseable (${source}): ${descriptive}`);
   }
 
+  log?.debug(`[Navimow API] Battery value missing in payload (${source})`);
   return null;
 }
 
-function normalizeBatteryValue(value: number): number | null {
+function normalizeBatteryValue(
+  value: number,
+  inputType: 'direct' | 'descriptiveCapacityRemaining',
+  source: string,
+  log?: Logger,
+): number | null {
   if (!Number.isFinite(value)) {
+    log?.warn(`[Navimow API] Invalid battery value (${source}, ${inputType}): ${String(value)}`);
     return null;
   }
-  return Math.max(0, Math.min(100, Math.round(value)));
+
+  const rounded = Math.round(value);
+  if (rounded < 0 || rounded > 100) {
+    log?.warn(`[Navimow API] Out-of-range battery value (${source}, ${inputType}): ${value}; clamping to 0-100`);
+  }
+  return Math.max(0, Math.min(100, rounded));
 }
 
 function stringValue(value: unknown): string | null {
