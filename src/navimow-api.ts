@@ -264,9 +264,12 @@ export class NavimowApiClient {
     const pwdInfoRaw = valueAtPath(info, ['pwdInfo']);
     const akRaw = valueAtPath(info, ['ak']);
     this.log?.debug(
-      `[Navimow API] getMqttConnectionInfo raw fields: subTopics=${debugFieldValue(subTopics)}\n` +
-      `subTopics.mapChange=${debugFieldValue(sub1)} subTopics.realtime=${debugFieldValue(sub2)}\n` +
-      `pwdInfo=${debugSensitiveFieldValue(pwdInfoRaw)} ak=${debugSensitiveFieldValue(akRaw)}`,
+      `[Navimow API] getMqttConnectionInfo raw fields: ` +
+      `subTopics=${debugFieldValue(subTopics)} ` +
+      `subTopics.mapChange=${debugFieldValue(sub1)} ` +
+      `subTopics.realtime=${debugFieldValue(sub2)} ` +
+      `pwdInfo=${debugSensitiveFieldValue(pwdInfoRaw)} ` +
+      `ak=${debugSensitiveFieldValue(akRaw)}`,
     );
     const accessToken = await this.tokenStore.getAccessToken();
     const username = stringFromPaths(info, [
