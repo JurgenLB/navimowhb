@@ -17,6 +17,7 @@ const RAW_STATE_TO_CANONICAL: Record<string, string> = {
   'Self-checking': 'idle',
   error: 'error',
   inSoftwareUpdate: 'paused',
+  isCharging: 'charging',
   isDocked: 'docked',
   isDocking: 'returning',
   isIdel: 'idle',
