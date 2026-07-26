@@ -609,16 +609,20 @@ function extractBatteryValue(data: Record<string, unknown>): number | null {
     return normalizeBatteryValue(direct);
   }
 
-  const descriptive = stringFromPaths(data, [
-    ['descriptiveCapacityRemaining'],
-    ['batteryInfo', 'descriptiveCapacityRemaining'],
-    ['attributes', 'descriptiveCapacityRemaining'],
-    ['attributes', 'batteryInfo', 'descriptiveCapacityRemaining'],
-  ]);
-  if (typeof descriptive === 'string') {
-    const match = descriptive.match(/\d+/);
-    if (match) {
-      return normalizeBatteryValue(Number(match[0]));
+  const capacityRemaining = valueAtPath(data, ['capacityRemaining']);
+  if (Array.isArray(capacityRemaining)) {
+    const percentageEntry = capacityRemaining.find(
+      (entry) =>
+        entry &&
+        typeof entry === 'object' &&
+        !Array.isArray(entry) &&
+        (entry as Record<string, unknown>).unit === 'PERCENTAGE',
+    ) as Record<string, unknown> | undefined;
+
+    const rawValue = percentageEntry?.rawValue;
+    const battery = numberValue(rawValue);
+    if (battery !== null) {
+      return normalizeBatteryValue(battery);
     }
   }
 
