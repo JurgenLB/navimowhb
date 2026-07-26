@@ -258,6 +258,12 @@ export class NavimowApiClient {
     const response = await this.request<Record<string, unknown>>('GET', '/openapi/mqtt/userInfo/get/v2');
     const info = response.data ?? {};
     this.log?.debug(`[Navimow API] getMqttConnectionInfo raw response keys: ${Object.keys(info).join(', ')}`);
+    const subTopics = valueAtPath(info, ['subTopics']);
+    const pwdInfoRaw = valueAtPath(info, ['pwdInfo']);
+    const akRaw = valueAtPath(info, ['ak']);
+    this.log?.debug(
+      `[Navimow API] getMqttConnectionInfo raw fields: subTopics=${debugFieldValue(subTopics)} pwdInfo=${debugSensitiveFieldValue(pwdInfoRaw)} ak=${debugSensitiveFieldValue(akRaw)}`,
+    );
     const accessToken = await this.tokenStore.getAccessToken();
     const username = stringFromPaths(info, [
       ['userName'],
@@ -738,6 +744,20 @@ function valueAtPath(record: Record<string, unknown>, path: string[]): unknown {
     current = (current as Record<string, unknown>)[segment];
   }
   return current;
+}
+
+function debugFieldValue(value: unknown): string {
+  if (Array.isArray(value) || (value && typeof value === 'object')) {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function debugSensitiveFieldValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.length > 0 ? `present(len=${value.length})` : 'empty';
+  }
+  return value === null || value === undefined ? 'missing' : `present(type=${typeof value})`;
 }
 
 function buildWebsocketBrokerUrl(
