@@ -286,7 +286,7 @@ export class NavimowBridgeClient extends EventEmitter {
 
     data.device_id ??= parsedTopic.deviceId;
 
-    this.log.debug(
+    this.log.info(
       `Navimow realtime ${parsedTopic.channel} for device ${parsedTopic.deviceId}: ${JSON.stringify(data)}`,
     );
 
