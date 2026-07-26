@@ -259,8 +259,12 @@ export class NavimowApiClient {
     const info = response.data ?? {};
     this.log?.debug(`[Navimow API] getMqttConnectionInfo raw response keys: ${Object.keys(info).join(', ')}`);
     const subTopics = valueAtPath(info, ['subTopics']);
-    const sub1 = valueAtPath(info, ['subTopics', 'mapChange']);
-    const sub2 = valueAtPath(info, ['subTopics', 'realtime']);
+    const sub1 = Array.isArray(subTopics)
+      ? subTopics.includes('mapChange')
+      : valueAtPath(info, ['subTopics', 'mapChange']);
+    const sub2 = Array.isArray(subTopics)
+      ? subTopics.includes('realtime')
+      : valueAtPath(info, ['subTopics', 'realtime']);
     const pwdInfoRaw = valueAtPath(info, ['pwdInfo']);
     const akRaw = valueAtPath(info, ['ak']);
     this.log?.debug(
