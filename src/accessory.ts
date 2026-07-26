@@ -137,7 +137,7 @@ export class NavimowAccessory {
 
     const { Characteristic } = this.platform;
     const batteryLevel = this.getBatteryLevel();
-    const charging = this.currentState?.state === 'charging'
+    const charging = this.isCharging()
       ? Characteristic.ChargingState.CHARGING
       : Characteristic.ChargingState.NOT_CHARGING;
 
