@@ -58,7 +58,7 @@
     "homebridge": ">=2.1.0"
   },
   "dependencies": {
-    "@homebridge/plugin-ui-utils": ">=5.24.0",
+    "@homebridge/plugin-ui-utils": ">=2.2.6",
     "mqtt": "^5.15.1"
   },
   "devDependencies": {
