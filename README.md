@@ -36,8 +36,8 @@ The plugin runs directly inside Homebridge:
 
 ## Requirements
 
-* Homebridge 1.8 or 2.1.0
-* Node.js version supported by Homebridge: 18 or 24
+* Homebridge 2.1.0 or newer
+* Node.js version supported by Homebridge: 24 or newer
 * A Navimow account that can sign in to the official mobile app
 
 ## Install For Development
